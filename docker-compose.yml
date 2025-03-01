@@ -1,0 +1,75 @@
+version: '3'
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg14
+    container_name: timescaledb
+    environment:
+      - POSTGRES_PASSWORD=asmadmin
+      - POSTGRES_DB=asm
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - asm_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  asm_api:
+    build:
+      context: .
+      dockerfile: docker/api.dockerfile
+    container_name: asm_api
+    depends_on:
+      - timescaledb
+    environment:
+      - DB_HOST=timescaledb
+      - DB_PORT=5432
+      - DB_NAME=asm
+      - DB_USER=postgres
+      - DB_PASSWORD=asmadmin
+      - CURRENT_USER=trinq
+    ports:
+      - "5000:5000"
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    networks:
+      - asm_network
+    restart: unless-stopped
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    environment:
+      - N8N_PORT=5678
+      - NODE_ENV=production
+      - WEBHOOK_URL=http://localhost:5678/
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=timescaledb
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=postgres
+      - DB_POSTGRESDB_PASSWORD=asmadmin
+    networks:
+      - asm_network
+    depends_on:
+      - timescaledb
+    restart: unless-stopped
+
+networks:
+  asm_network:
+    driver: bridge
+
+volumes:
+  timescale_data:
+  n8n_data:

@@ -1,0 +1,163 @@
+{
+  "name": "Scheduled Port Scan",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "minutesInterval": 12
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "http://asm_api:5000/api/scan/ports",
+        "jsonParameters": true,
+        "options": {},
+        "bodyParametersJson": "{\n  \"target\": \"192.168.1.1\",\n  \"ports\": [22, 80, 443, 8080, 3306, 5432],\n  \"scan_type\": \"stealth\",\n  \"timeout\": 2\n}"
+      },
+      "name": "HTTP Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json[\"message\"]}}",
+              "operation": "contains",
+              "value2": "Scan started"
+            }
+          ]
+        }
+      },
+      "name": "IF",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        690,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Wait for scan to complete (adjust time as needed)\nreturn new Promise(resolve => {\n  setTimeout(() => {\n    resolve([{json: {scan_id: $input.item(0).json.scan_id}}]);\n  }, 10000);\n});"
+      },
+      "name": "Function",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        890,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "requestMethod": "GET",
+        "url": "={{\"http://asm_api:5000/api/results?scan_id=\" + $json[\"scan_id\"]}}",
+        "options": {}
+      },
+      "name": "Get Results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1090,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "count",
+        "resultValue": "count"
+      },
+      "name": "Summarize Results",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 1,
+      "position": [
+        1290,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "IF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF": {
+      "main": [
+        [
+          {
+            "node": "Function",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function": {
+      "main": [
+        [
+          {
+            "node": "Get Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Results": {
+      "main": [
+        [
+          {
+            "node": "Summarize Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "versionId": "1a2b3c4d5e6f7g8h9i0j",
+  "id": "1",
+  "meta": {
+    "instanceId": "987654321098765432"
+  }
+}
