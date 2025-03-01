@@ -1,6 +1,14 @@
--- Initial database setup for ASM project
-CREATE DATABASE asm;
-\c asm;
+-- Initial database setup for Dalang Watcher project
+DO
+$$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'dalang_watcher') THEN
+        CREATE DATABASE dalang_watcher;
+    END IF;
+END
+$$;
+
+\c dalang_watcher;
 
 -- Enable TimescaleDB extension
 CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
@@ -15,18 +23,19 @@ CREATE TABLE IF NOT EXISTS scans (
 );
 
 CREATE TABLE IF NOT EXISTS scan_results (
-    result_id SERIAL PRIMARY KEY,
+    result_id SERIAL,
     scan_id INTEGER REFERENCES scans(scan_id),
     target TEXT,
     port INTEGER,
     protocol VARCHAR(10),
     status VARCHAR(20),
     additional_data JSONB,
-    discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (result_id, discovered_at)
 );
 
 -- Convert scan_results to a TimescaleDB hypertable
-SELECT create_hypertable('scan_results', 'discovered_at');
+SELECT create_hypertable('scan_results', 'discovered_at', if_not_exists => TRUE);
 
 -- Create an index on target for faster lookups
-CREATE INDEX idx_scan_results_target ON scan_results(target);
+CREATE INDEX IF NOT EXISTS idx_scan_results_target ON scan_results(target);

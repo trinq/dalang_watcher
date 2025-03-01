@@ -24,6 +24,15 @@ This project enables security teams to continuously discover, enumerate, and mon
 - **API-First Design**: RESTful API for integration with other systems
 - **Containerized Deployment**: Easy setup with Docker and Docker Compose
 
+## Documentation
+
+- [Quick Start Guide](docs/QUICKSTART.md) - Get up and running quickly
+- [API Documentation](docs/api/README.md) - Detailed API reference
+  - [Port Scanning](docs/api/endpoints/scan_ports.md)
+  - [Host Discovery](docs/api/endpoints/scan_hosts.md)
+  - [Results Retrieval](docs/api/endpoints/results.md)
+  - [Scans Information](docs/api/endpoints/scans.md)
+
 ## Architecture
 
 The Dalang Watcher system consists of three main components:

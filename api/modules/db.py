@@ -12,7 +12,7 @@ class DatabaseManager:
         """Initialize with connection parameters or use environment variables."""
         self.host = host or os.environ.get('DB_HOST', 'timescaledb')
         self.port = port or os.environ.get('DB_PORT', '5432')
-        self.dbname = dbname or os.environ.get('DB_NAME', 'asm')
+        self.dbname = dbname or os.environ.get('DB_NAME', 'dalang_watcher')
         self.user = user or os.environ.get('DB_USER', 'postgres')
         self.password = password or os.environ.get('DB_PASSWORD', 'asmadmin')
     
