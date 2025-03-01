@@ -83,7 +83,8 @@ def scan_ports():
     return jsonify({
         "message": "Scan started",
         "scan_id": scan_id,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "target": target_ip
     })
 
 def perform_port_scan(scan_id, target_ip, ports, scan_type, timeout):
