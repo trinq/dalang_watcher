@@ -1,39 +1,70 @@
 #!/usr/bin/env python3
 """
-Dalang Watcher API Client Example
+Dalang Watcher API Client
 
-This script demonstrates how to interact with the Dalang Watcher API
-for network scanning and monitoring.
+This client provides a command-line interface to interact with the Dalang Watcher API.
 """
 
-import requests
-import json
-import time
 import argparse
+import json
+import os
+import sys
+import time
 from tabulate import tabulate
+import requests
 
-API_BASE = "http://localhost:5000"
+# Default API URL (can be overridden with --url parameter or API_URL environment variable)
+DEFAULT_API_URL = "http://localhost:5000"
+
+def get_api_url():
+    """Get the API URL from environment variable or use default"""
+    return os.environ.get("API_URL", DEFAULT_API_URL)
+
+def get_api_key():
+    """Get the API key from environment variable"""
+    return os.environ.get("API_KEY", "")
+
+def make_request(method, endpoint, data=None, params=None):
+    """Make a request to the API with proper headers"""
+    url = f"{get_api_url()}{endpoint}"
+    headers = {"Content-Type": "application/json"}
+    
+    # Add API key header if available
+    api_key = get_api_key()
+    if api_key:
+        headers["X-API-Key"] = api_key
+    
+    try:
+        if method == "GET":
+            response = requests.get(url, params=params, headers=headers)
+        elif method == "POST":
+            response = requests.post(url, json=data, headers=headers)
+        else:
+            raise ValueError(f"Unsupported HTTP method: {method}")
+        
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error: {str(e)}")
+        if hasattr(e, 'response') and e.response is not None:
+            try:
+                error_data = e.response.json()
+                print(f"API Error: {error_data.get('error', 'Unknown error')}")
+            except:
+                print(f"Status code: {e.response.status_code}")
+        sys.exit(1)
 
 def check_health():
     """Check if the API is running"""
-    response = requests.get(f"{API_BASE}/api/health")
-    return response.json()
+    return make_request("GET", "/api/health")
 
 def scan_ports(target, ports, scan_type="connect"):
     """Scan ports on a target IP"""
-    response = requests.post(
-        f"{API_BASE}/api/scan/ports",
-        json={"target": target, "ports": ports, "scan_type": scan_type}
-    )
-    return response.json()
+    return make_request("POST", "/api/scan/ports", data={"target": target, "ports": ports, "scan_type": scan_type})
 
 def scan_hosts(network):
     """Discover active hosts in a network"""
-    response = requests.post(
-        f"{API_BASE}/api/scan/hosts",
-        json={"network": network}
-    )
-    return response.json()
+    return make_request("POST", "/api/scan/hosts", data={"network": network})
 
 def get_results(scan_id=None, target=None):
     """Get results for a scan"""
@@ -43,13 +74,11 @@ def get_results(scan_id=None, target=None):
     if target:
         params["target"] = target
     
-    response = requests.get(f"{API_BASE}/api/results", params=params)
-    return response.json()
+    return make_request("GET", "/api/results", params=params)
 
 def get_scans(limit=10):
     """Get information about previous scans"""
-    response = requests.get(f"{API_BASE}/api/scans", params={"limit": limit})
-    return response.json()
+    return make_request("GET", "/api/scans", params={"limit": limit})
 
 def display_port_results(results):
     """Display port scan results in a table"""

@@ -2,6 +2,11 @@ from scapy.all import IP, TCP, UDP, ICMP, sr1, srp, Ether, ARP
 import ipaddress
 import threading
 
+
+
+
+
+
 class NetworkScanner:
     """
     Class that handles various network scanning techniques using Scapy

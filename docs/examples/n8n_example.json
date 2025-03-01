@@ -1,0 +1,509 @@
+{
+  "name": "Dalang Watcher - Port Change Detection Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "minutesInterval": 6
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "filePath": "/data/target_ips.csv"
+      },
+      "name": "Read Target IPs",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "headerRow": true,
+          "includeEmptyCells": true
+        }
+      },
+      "name": "Parse CSV",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 1,
+      "position": [
+        550,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "name": "IP List",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DALANG_API_URL }}/api/scan/ports",
+        "authentication": "headerAuth",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.DALANG_API_KEY }}"
+            }
+          ]
+        },
+        "options": {},
+        "bodyParametersJson": "{\n  \"target\": \"={{ $json.ip }}\",\n  \"ports\": [20, 21, 22, 23, 25, 53, 80, 110, 115, 135, 139, 143, 194, 443, 445, 1433, 3306, 3389, 5432, 5900, 8080],\n  \"scan_type\": \"connect\"\n}"
+      },
+      "name": "Scan Ports",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        850,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 10,
+        "unit": "seconds"
+      },
+      "name": "Wait for Scan",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.DALANG_API_URL }}/api/results?scan_id={{ $node[\"Scan Ports\"].json.scan_id }}",
+        "authentication": "headerAuth",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.DALANG_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Get Current Results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1150,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.DALANG_API_URL }}/api/scans?target={{ $json.ip }}&limit=10",
+        "authentication": "headerAuth",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.DALANG_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Get Previous Scans",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1300,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Find the most recent previous scan (excluding the current one)\nconst currentScanId = $node[\"Scan Ports\"].json.scan_id;\nconst previousScans = $input.item.json.filter(scan => scan.scan_id !== currentScanId);\n\nif (previousScans.length === 0) {\n  // No previous scans, this is the baseline\n  return {\n    json: {\n      ip: $node[\"IP List\"].json.ip,\n      hasBaseline: false,\n      message: \"No previous scans found. This is the baseline scan.\"\n    }\n  };\n}\n\n// Get the most recent previous scan\nconst previousScan = previousScans[0];\n\nreturn {\n  json: {\n    ip: $node[\"IP List\"].json.ip,\n    hasBaseline: true,\n    previousScanId: previousScan.scan_id,\n    previousScanTime: previousScan.created_at\n  }\n};"
+      },
+      "name": "Find Previous Scan",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.hasBaseline }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Has Previous Scan?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.DALANG_API_URL }}/api/results?scan_id={{ $json.previousScanId }}",
+        "authentication": "headerAuth",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.DALANG_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Get Previous Results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1750,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Extract current open ports\nconst currentResults = $node[\"Get Current Results\"].json;\nconst currentOpenPorts = currentResults\n  .filter(result => result.status === 'Open')\n  .map(result => ({\n    port: result.port,\n    protocol: result.protocol,\n    service: getServiceName(result.port),\n    discovered_at: result.discovered_at\n  }));\n\n// Extract previous open ports\nconst previousResults = $input.item.json;\nconst previousOpenPorts = previousResults\n  .filter(result => result.status === 'Open')\n  .map(result => ({\n    port: result.port,\n    protocol: result.protocol,\n    service: getServiceName(result.port),\n    discovered_at: result.discovered_at\n  }));\n\n// Find new open ports (in current but not in previous)\nconst newOpenPorts = currentOpenPorts.filter(current => \n  !previousOpenPorts.some(prev => prev.port === current.port)\n);\n\n// Find closed ports (in previous but not in current)\nconst closedPorts = previousOpenPorts.filter(prev => \n  !currentOpenPorts.some(current => current.port === prev.port)\n);\n\n// Helper function to get service name\nfunction getServiceName(port) {\n  const serviceMap = {\n    21: \"FTP\", 22: \"SSH\", 23: \"Telnet\", 25: \"SMTP\", 53: \"DNS\", \n    80: \"HTTP\", 110: \"POP3\", 115: \"SFTP\", 135: \"RPC\", 139: \"NetBIOS\",\n    143: \"IMAP\", 194: \"IRC\", 443: \"HTTPS\", 445: \"SMB\", 1433: \"MSSQL\",\n    3306: \"MySQL\", 3389: \"RDP\", 5432: \"PostgreSQL\", 5900: \"VNC\", \n    8080: \"HTTP-Alt\"\n  };\n  return serviceMap[port] || \"Unknown\";\n}\n\nreturn {\n  json: {\n    ip: $node[\"IP List\"].json.ip,\n    hasChanges: newOpenPorts.length > 0 || closedPorts.length > 0,\n    newOpenPorts,\n    closedPorts,\n    currentOpenPorts,\n    previousScanTime: $node[\"Find Previous Scan\"].json.previousScanTime,\n    currentScanId: $node[\"Scan Ports\"].json.scan_id\n  }\n};"
+      },
+      "name": "Detect Port Changes",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1900,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.hasChanges }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Has Changes?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        2050,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "ip",
+              "value": "={{ $json.ip }}"
+            },
+            {
+              "name": "hasChanges",
+              "value": "={{ $json.hasChanges }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Add to Changed IPs",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        100
+      ]
+    },
+    {
+      "parameters": {},
+      "name": "Collect Changed IPs",
+      "type": "n8n-nodes-base.mergingNode",
+      "typeVersion": 2,
+      "position": [
+        2350,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.length > 0 }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Any IPs Changed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        2500,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Format the alert message\nconst changedIPs = $input.item.json;\nconst totalIPs = $node[\"Parse CSV\"].json.length;\n\nlet alertMessage = `🚨 PORT CHANGES DETECTED\\n\\n`;\nalertMessage += `Changed IPs: ${changedIPs.length} of ${totalIPs} monitored\\n\\n`;\n\n// Add details for each changed IP\nfor (const ip of changedIPs) {\n  // Get the full details for this IP\n  const ipDetails = $node[\"Detect Port Changes\"].all.find(item => \n    item.json.ip === ip.ip\n  );\n  \n  if (!ipDetails) continue;\n  \n  const { newOpenPorts, closedPorts } = ipDetails.json;\n  \n  alertMessage += `IP: ${ip.ip}\\n`;\n  \n  if (newOpenPorts.length > 0) {\n    alertMessage += `  NEW OPEN PORTS: ${newOpenPorts.length}\\n`;\n    for (const port of newOpenPorts) {\n      alertMessage += `  - Port ${port.port} (${port.service})\\n`;\n    }\n  }\n  \n  if (closedPorts.length > 0) {\n    alertMessage += `  CLOSED PORTS: ${closedPorts.length}\\n`;\n    for (const port of closedPorts) {\n      alertMessage += `  - Port ${port.port} (${port.service})\\n`;\n    }\n  }\n  \n  alertMessage += `\\n`;\n}\n\nalertMessage += `Detected: ${new Date().toISOString()}\\n`;\nalertMessage += `Detected by: trinq\\n`;\n\nreturn {\n  json: {\n    alertMessage\n  }\n};"
+      },
+      "name": "Format Alert",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        2650,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/YOUR_SLACK_WEBHOOK",
+        "authentication": "none",
+        "options": {},
+        "bodyParametersJson": "{\n  \"text\": \"{{ $json.alertMessage }}\"\n}"
+      },
+      "name": "Send Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        2800,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Target IPs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Target IPs": {
+      "main": [
+        [
+          {
+            "node": "Parse CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse CSV": {
+      "main": [
+        [
+          {
+            "node": "IP List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IP List": {
+      "main": [
+        [
+          {
+            "node": "Scan Ports",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scan Ports": {
+      "main": [
+        [
+          {
+            "node": "Wait for Scan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Scan": {
+      "main": [
+        [
+          {
+            "node": "Get Current Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Current Results": {
+      "main": [
+        [
+          {
+            "node": "Get Previous Scans",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Previous Scans": {
+      "main": [
+        [
+          {
+            "node": "Find Previous Scan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Previous Scan": {
+      "main": [
+        [
+          {
+            "node": "Has Previous Scan?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Previous Scan?": {
+      "main": [
+        [
+          {
+            "node": "Get Previous Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Get Previous Results": {
+      "main": [
+        [
+          {
+            "node": "Detect Port Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Port Changes": {
+      "main": [
+        [
+          {
+            "node": "Has Changes?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Changes?": {
+      "main": [
+        [
+          {
+            "node": "Add to Changed IPs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Add to Changed IPs": {
+      "main": [
+        [
+          {
+            "node": "Collect Changed IPs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Changed IPs": {
+      "main": [
+        [
+          {
+            "node": "Any IPs Changed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any IPs Changed?": {
+      "main": [
+        [
+          {
+            "node": "Format Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Format Alert": {
+      "main": [
+        [
+          {
+            "node": "Send Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null,
+  "pinData": {},
+  "versionId": "",
+  "triggerCount": 0,
+  "tags": []
+}
