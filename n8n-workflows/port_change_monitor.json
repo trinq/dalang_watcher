@@ -36,7 +36,7 @@
     },
     {
       "parameters": {
-        "functionCode": "// Process current scan results\nconst currentResults = $input.item(0).json;\nconst currentPorts = [];\n\n// Extract current open ports\nfor (const result of currentResults) {\n  if (result.status === 'Open') {\n    currentPorts.push({\n      port: result.port,\n      protocol: result.protocol\n    });\n  }\n}\n\n// Set previous scan results as a node variable to compare later\n$node.previousPorts = JSON.stringify(currentPorts);\n\nreturn [{json: {currentPorts}}];"
+        "functionCode": "// Process current scan results\nconst currentResults = $input.item(0).json;\nconst currentPorts = [];\n\n// Extract current open ports\nfor (const result of currentResults) {\n  if (result.status === 'open') {\n    currentPorts.push({\n      port: result.port,\n      protocol: result.protocol\n    });\n  }\n}\n\nreturn {\n  json: {\n    currentPorts: currentPorts\n  }\n};"
       },
       "name": "Process Results",
       "type": "n8n-nodes-base.function",
@@ -48,7 +48,7 @@
     },
     {
       "parameters": {
-        "functionCode": "// Compare with previous scan if available\nlet previousPorts = [];\nif ($node.previousPorts) {\n  previousPorts = JSON.parse($node.previousPorts);\n}\n\nconst currentPorts = $input.item(0).json.currentPorts;\n\n// Find new ports\nconst newPorts = currentPorts.filter(current => {\n  return !previousPorts.some(prev => \n    prev.port === current.port && prev.protocol === current.protocol\n  );\n});\n\n// Find closed ports\nconst closedPorts = previousPorts.filter(prev => {\n  return !currentPorts.some(current => \n    current.port === prev.port && current.protocol === prev.protocol\n  );\n});\n\nreturn [{\n  json: {\n    newPorts,\n    closedPorts,\n    hasChanges: newPorts.length > 0 || closedPorts.length > 0\n  }\n}];"
+        "functionCode": "// Compare with previous scan if available\nlet previousPorts = [];\nif ($node.previousPorts) {\n  previousPorts = JSON.parse($node.previousPorts);\n}\n\nconst currentPorts = $input.item(0).json.currentPorts;\n\n// Find new ports\nconst newPorts = currentPorts.filter(current => {\n  return !previousPorts.some(prev => prev.port === current.port && prev.protocol === current.protocol);\n});\n\n// Find removed ports\nconst removedPorts = previousPorts.filter(prev => {\n  return !currentPorts.some(current => current.port === prev.port && current.protocol === prev.protocol);\n});\n\n// Store current ports for next run\nconst hasChanges = newPorts.length > 0 || removedPorts.length > 0;\n$node.previousPorts = JSON.stringify(currentPorts);\n\nreturn {\n  json: {\n    hasChanges: hasChanges,\n    newPorts: newPorts,\n    removedPorts: removedPorts\n  }\n};"
       },
       "name": "Compare Results",
       "type": "n8n-nodes-base.function",
@@ -80,4 +80,81 @@
     {
       "parameters": {
         "subject": "Port Changes Detected",
-        "html": "<h1>ASM Port Change Alert</h1>\n<p>Changes were detected in the attack surface:</p>\n\n<h2>New Open Ports</h2>\n<table>\n  <tr>\n    <th>Port</th>\n    <th>Protocol</th>\n  </tr>\n  {{#each $json[\"newPorts\"]}}\n  <tr>\n    <td>{{this.port}}</td>\n    <td>{{this.protocol}}</td>\n  </tr>\n  {{/each}}\n  {{#if $json[\"newPorts\"].length === 0}}\n  <tr>\n    <td colspan=\"2\">None</td>\n  </tr>\n  {{/if}}\n</table>\n\n<h2>Closed Ports</h2>\n<table>\n  <tr>\n    <th>Port</th>\n    <th>Protocol</th>\n  </tr>\n  {{#each $json[\"closedPorts\"]}}\n  <tr>\n    <td>{{this.port}}</td>\n    <td>{{this.protocol}}</td>\n  </tr>\n  {{/each}}\n  {{#if $json[
+        "html": "<h1>ASM Port Change Alert</h1>\n<p>Changes were detected in the attack surface:</p>\n\n<h2>New Open Ports</h2>\n<table>\n  <tr>\n    <th>Port</th>\n    <th>Protocol</th>\n  </tr>\n  {{#each $json[\"newPorts\"]}}\n  <tr>\n    <td>{{this.port}}</td>\n    <td>{{this.protocol}}</td>\n  </tr>\n  {{/each}}\n</table>\n\n<h2>Closed Ports</h2>\n<table>\n  <tr>\n    <th>Port</th>\n    <th>Protocol</th>\n  </tr>\n  {{#each $json[\"removedPorts\"]}}\n  <tr>\n    <td>{{this.port}}</td>\n    <td>{{this.protocol}}</td>\n  </tr>\n  {{/each}}\n</table>",
+        "attachments": [],
+        "options": {}
+      },
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        200
+      ],
+      "credentials": {
+        "smtp": "smtp"
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Current Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Current Results": {
+      "main": [
+        [
+          {
+            "node": "Process Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Results": {
+      "main": [
+        [
+          {
+            "node": "Compare Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compare Results": {
+      "main": [
+        [
+          {
+            "node": "IF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "id": "1",
+  "version": 1
+}
