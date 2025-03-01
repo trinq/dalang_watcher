@@ -1,0 +1,72 @@
+@startuml
+title Dalang Watcher - Multiple IP Monitoring Workflow
+
+actor "Security Analyst (trinq)" as User
+participant "n8n (Automation)" as n8n
+participant "Dalang Watcher API (5000)" as API
+participant "TimescaleDB (5432)" as DB
+participant "Scapy (Port Scanner)" as Scapy
+participant "Multiple Target IPs" as Network
+
+note right of User
+  Current Date: 2025-03-01 08:11:34 (UTC)
+  User: trinq
+end note
+
+== Step 1: Scan Multiple IPs for Open Ports ==
+
+User -> n8n: Configure IP Watch List\n(100+ target IPs)
+n8n -> n8n: Load IP Target List from File
+note right of n8n
+  target_ips.csv:
+  - 203.0.113.10
+  - 203.0.113.11
+  - 198.51.100.25
+  - 192.0.2.100
+  ...and ~96 more IPs
+end note
+
+loop For Each IP in Target List
+    n8n -> API: POST /api/scan/ports\n{target: "${ip}", ports: [20-8080]}
+    API -> Scapy: Execute Port Scan on Target
+    Scapy -> Network: Scan Target Ports
+    Network -> Scapy: Return Port Status
+    Scapy -> API: Return Open Port Results
+    API -> DB: Store Port State with Timestamp
+end
+
+== Step 2: Delta Detection Across Multiple IPs ==
+
+n8n -> n8n: Begin Change Detection Process
+
+loop For Each IP in Target List
+    n8n -> API: GET /api/results?target=${ip}
+    API -> DB: Query Latest Results for IP
+    DB -> API: Return Current Open Ports
+    API -> n8n: Return Port Status List
+    
+    n8n -> DB: Query Previous Scan Results for IP
+    DB -> n8n: Return Historical Port Data
+    
+    n8n -> n8n: Compare Current vs Previous State
+    
+    alt Changes Detected for This IP
+        n8n -> n8n: Add to "Changed IPs" List
+    end
+end
+
+n8n -> n8n: Aggregate All IP Changes
+
+alt Any Changes Detected
+    n8n -> User: Send Consolidated Alert
+    note right
+      Alert Details:
+      - Changed IPs: 2 of 100 monitored
+      - 203.0.113.10: New Port 3389 (RDP)
+      - 192.0.2.100: New Port 5432 (PostgreSQL)
+      - Detected: 2025-03-01 08:11:34
+      - Detected by: trinq
+    end note
+end
+
+@enduml

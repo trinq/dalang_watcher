@@ -45,6 +45,14 @@ The Dalang Watcher system consists of three main components:
                      Network Assets
 ```
 
+### Sequence Diagram - Multiple IP Monitoring Workflow
+
+The following sequence diagram illustrates how Dalang Watcher monitors multiple IP addresses and detects changes:
+
+![Dalang Watcher - Multiple IP Monitoring Workflow](sequece_diagram.png)
+
+> The PlantUML source code for this diagram is available in the `sequence_diagram.puml` file.
+
 ## Requirements
 
 - Docker and Docker Compose
