@@ -152,7 +152,8 @@ def get_results():
 def get_scans():
     """Get information about previous scans."""
     limit = request.args.get('limit', 100, type=int)
-    scans = db_manager.get_scans(limit)
+    target = request.args.get('target')
+    scans = db_manager.get_scans(limit, target)
     
     # Convert datetime objects to ISO format strings for JSON serialization
     for scan in scans:

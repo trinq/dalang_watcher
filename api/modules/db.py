@@ -142,12 +142,18 @@ class DatabaseManager:
         
         return results
     
-    def get_scans(self, limit=100):
+    def get_scans(self, limit=100, target=None):
         """Get scan metadata from the database."""
         conn = self.get_connection()
         cur = conn.cursor()
         
-        cur.execute(f"SELECT * FROM scans ORDER BY created_at DESC LIMIT {limit}")
+        if target:
+            cur.execute(
+                "SELECT * FROM scans WHERE target = %s ORDER BY created_at DESC LIMIT %s",
+                (target, limit)
+            )
+        else:
+            cur.execute("SELECT * FROM scans ORDER BY created_at DESC LIMIT %s", (limit,))
         
         columns = [desc[0] for desc in cur.description]
         scans = [dict(zip(columns, row)) for row in cur.fetchall()]
