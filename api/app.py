@@ -55,7 +55,7 @@ def init_app():
 def scan_ports():
     data = request.json
     target_ip = data.get('target')
-    ports = data.get('ports', [])
+    ports_input = data.get('ports', [])
     scan_type = data.get('scan_type', 'stealth')
     timeout = data.get('timeout', 1)
     
@@ -65,8 +65,46 @@ def scan_ports():
     except ValueError:
         return jsonify({"error": "Invalid IP address"}), 400
     
+    # Parse port specifications (both individual ports and ranges)
+    ports = []
+    
+    # Convert to list if it's not already
+    if not isinstance(ports_input, list):
+        ports_input = [ports_input]
+    
+    # Process each port specification in the list
+    for port_spec in ports_input:
+        # Handle integers (direct port numbers)
+        if isinstance(port_spec, int):
+            ports.append(port_spec)
+            continue
+            
+        # Convert to string for further processing
+        port_str = str(port_spec)
+        
+        # Check if it's a range with hyphen
+        if '-' in port_str:
+            try:
+                start, end = map(int, port_str.split('-', 1))
+                ports.extend(range(start, end + 1))  # +1 to include the end port
+            except ValueError:
+                return jsonify({"error": f"Invalid port range format: {port_str}"}), 400
+        else:
+            # Try to parse as a single port number
+            try:
+                ports.append(int(port_str))
+            except ValueError:
+                return jsonify({"error": f"Invalid port specification: {port_str}"}), 400
+    
+    # Validate ports
     if not ports:
-        return jsonify({"error": "No ports specified"}), 400
+        return jsonify({"error": "No valid ports specified"}), 400
+    
+    # Remove any duplicate ports and ensure they're all in valid range
+    ports = sorted(list(set(ports)))
+    invalid_ports = [p for p in ports if p < 1 or p > 65535]
+    if invalid_ports:
+        return jsonify({"error": f"Invalid port numbers: {invalid_ports}. Ports must be between 1 and 65535"}), 400
     
     # Create scan record in database
     scan_id = db_manager.create_scan(
@@ -84,7 +122,8 @@ def scan_ports():
         "message": "Scan started",
         "scan_id": scan_id,
         "timestamp": datetime.now().isoformat(),
-        "target": target_ip
+        "target": target_ip,
+        "ports": ports
     })
 
 def perform_port_scan(scan_id, target_ip, ports, scan_type, timeout):
