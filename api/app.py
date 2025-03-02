@@ -59,6 +59,9 @@ def scan_ports():
     scan_type = data.get('scan_type', 'stealth')
     timeout = data.get('timeout', 1)
     
+    # Safety limits
+    MAX_PORTS_PER_SCAN = 10000  # Maximum number of ports allowed in a single scan
+    
     # Validate input
     try:
         ipaddress.ip_address(target_ip)
@@ -86,6 +89,14 @@ def scan_ports():
         if '-' in port_str:
             try:
                 start, end = map(int, port_str.split('-', 1))
+                
+                # Safety check for port range size
+                range_size = end - start + 1
+                if range_size > MAX_PORTS_PER_SCAN:
+                    return jsonify({
+                        "error": f"Port range {start}-{end} contains {range_size} ports, which exceeds the maximum of {MAX_PORTS_PER_SCAN} ports per scan. Please use a smaller range or multiple scans."
+                    }), 400
+                
                 ports.extend(range(start, end + 1))  # +1 to include the end port
             except ValueError:
                 return jsonify({"error": f"Invalid port range format: {port_str}"}), 400
@@ -102,6 +113,13 @@ def scan_ports():
     
     # Remove any duplicate ports and ensure they're all in valid range
     ports = sorted(list(set(ports)))
+    
+    # Safety check for total ports count after removing duplicates
+    if len(ports) > MAX_PORTS_PER_SCAN:
+        return jsonify({
+            "error": f"Requested scan contains {len(ports)} ports, which exceeds the maximum of {MAX_PORTS_PER_SCAN} ports per scan. Please use a smaller range or multiple scans."
+        }), 400
+    
     invalid_ports = [p for p in ports if p < 1 or p > 65535]
     if invalid_ports:
         return jsonify({"error": f"Invalid port numbers: {invalid_ports}. Ports must be between 1 and 65535"}), 400
@@ -123,7 +141,8 @@ def scan_ports():
         "scan_id": scan_id,
         "timestamp": datetime.now().isoformat(),
         "target": target_ip,
-        "ports": ports
+        "ports": ports,
+        "port_count": len(ports)
     })
 
 def perform_port_scan(scan_id, target_ip, ports, scan_type, timeout):
